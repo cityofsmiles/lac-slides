@@ -2,74 +2,100 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Remote — Slides</title>
 <style>
-  :root{
-    --line:#000;
-    --dim:#666;
-    --paper:#fff;
-    --mono: ui-monospace, 'SF Mono', Consolas, monospace;
-    --serif: Georgia, 'Bookerly', 'Palatino', 'Times New Roman', serif;
-    --sans: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #fff; color: #000;
+    font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
   }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{
-    margin:0; padding:0; height:100%; background:var(--paper); color:var(--line);
-    font-family:var(--sans); overflow:hidden;
+  /* No flexbox, no vh units, no % heights on absolutely-positioned boxes —
+     older Kindle WebKit doesn't reliably support those, which is what was
+     collapsing the layout to a quarter of the screen. Every box below gets
+     its exact pixel top/left/width/height set by JS on load instead. */
+  #app, #bar, #pad, #zonePrev, #zoneNext, #footer, #gotoOverlay {
+    position: absolute;
+    left: 0;
+    width: 100%;
   }
-  #app{position:fixed; inset:0; display:flex; flex-direction:column;}
+  #bar {
+    top: 0;
+    border-bottom: 2px solid #000;
+    white-space: nowrap;
+  }
+  #bar .label {
+    position: absolute; left: 12px; top: 0;
+    font-family: 'Courier New', monospace; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  #status {
+    position: absolute; right: 12px; top: 0;
+    font-family: 'Courier New', monospace; font-size: 11px; color: #666;
+  }
+  .zone {
+    border-bottom: 2px solid #000;
+    text-align: center;
+    overflow: hidden;
+  }
+  #zoneNext { border-bottom: none; }
+  .zone .word {
+    font-family: Georgia, 'Times New Roman', serif;
+    margin: 0;
+  }
+  .zone .sub {
+    position: absolute; left: 0; width: 100%; bottom: 14px; text-align: center;
+    font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 1px; color: #666;
+  }
+  .zone.pressed { background: #000; }
+  .zone.pressed .word { color: #fff; }
+  .zone.pressed .sub { color: #fff; }
+  .zone.disabled .word { color: #999; }
+  #footer {
+    border-top: 2px solid #000;
+    font-family: 'Courier New', monospace; font-size: 11px; color: #666;
+  }
+  #slidePos {
+    position: absolute; left: 12px; top: 0;
+    text-decoration: underline;
+  }
+  #slidePos b { color: #000; }
+  #sentFlag {
+    position: absolute; right: 12px; top: 0;
+    opacity: 0;
+  }
+  #sentFlag.show { opacity: 1; }
 
-  #bar{
-    display:flex; align-items:center; justify-content:space-between; gap:8px;
-    padding:10px 12px; border-bottom:2px solid var(--line); flex-shrink:0;
+  #gotoOverlay {
+    top: 0; height: 100%; background: #fff; z-index: 25; display: none;
   }
-  #bar .label{font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.08em;}
-  #status{font-family:var(--mono); font-size:11px; color:var(--dim);}
-
-  #pad{flex:1; display:flex; flex-direction:column;}
-  .zone{
-    flex:1; display:flex; align-items:center; justify-content:center;
-    border-bottom:2px solid var(--line); position:relative;
+  #gotoOverlay.active { display: block; }
+  #gotoLabel {
+    position: absolute; left: 0; width: 100%; text-align: center;
+    font-family: 'Courier New', monospace; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 1px; color: #666;
   }
-  .zone:last-child{border-bottom:none;}
-  .zone .word{font-family:var(--serif); font-size:15vh; line-height:1; user-select:none;}
-  .zone .sub{
-    position:absolute; bottom:14px; left:0; right:0; text-align:center;
-    font-family:var(--mono); font-size:11px; letter-spacing:0.08em; color:var(--dim);
+  #gotoInput {
+    position: absolute; left: 50%; width: 220px; margin-left: -110px;
+    border: 2px solid #000; background: #fff; color: #000;
+    font-family: Georgia, serif; font-size: 60px; line-height: 1;
+    text-align: center; padding: 8px 0;
   }
-  .zone.pressed{background:var(--line); color:var(--paper);}
-  .zone.pressed .sub{color:var(--paper);}
-  .zone.disabled{color:var(--dim);}
-  .zone.disabled .word{opacity:0.35;}
-
-  #footer{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:8px 12px; border-top:2px solid var(--line); flex-shrink:0;
-    font-family:var(--mono); font-size:11px; color:var(--dim);
+  #gotoHint {
+    position: absolute; left: 0; width: 100%; text-align: center;
+    font-family: 'Courier New', monospace; font-size: 11px; color: #666;
   }
-  #slidePos{background:none; border:none; padding:0; color:var(--dim); font-family:var(--mono); font-size:11px; text-decoration:underline;}
-  #slidePos b{color:var(--line);}
-  #sentFlag{opacity:0;}
-  #sentFlag.show{opacity:1;}
-
-  #gotoOverlay{
-    position:fixed; inset:0; background:var(--paper); z-index:25; display:none;
-    flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px;
+  #gotoCancel, #gotoGo {
+    position: absolute; width: 46%; top: 0;
+    font-family: 'Courier New', monospace; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 1px; border: 2px solid #000; background: #fff; padding: 12px 0;
   }
-  #gotoOverlay.active{display:flex;}
-  #gotoLabel{font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--dim);}
-  #gotoInput{
-    width:100%; max-width:220px; border:2px solid var(--line); background:var(--paper); color:var(--line);
-    font-family:var(--serif); font-size:15vh; line-height:1; text-align:center; padding:8px 0;
-  }
-  #gotoRow{display:flex; gap:10px; width:100%; max-width:280px;}
-  #gotoGo, #gotoCancel{
-    flex:1; font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.06em;
-    border:2px solid var(--line); background:var(--paper); padding:12px 0;
-  }
-  #gotoGo:active, #gotoCancel:active{background:var(--line); color:var(--paper);}
-  #gotoHint{font-family:var(--mono); font-size:11px; color:var(--dim);}
+  #gotoCancel { left: 2%; }
+  #gotoGo { left: 52%; }
+  #gotoCancel.pressed, #gotoGo.pressed { background: #000; color: #fff; }
 </style>
 </head>
 <body>
@@ -101,10 +127,8 @@
   <div id="gotoLabel">Go to slide</div>
   <input id="gotoInput" type="number" inputmode="numeric" min="1" placeholder="&mdash;">
   <div id="gotoHint"></div>
-  <div id="gotoRow">
-    <button id="gotoCancel">Cancel</button>
-    <button id="gotoGo">Go</button>
-  </div>
+  <button id="gotoCancel">Cancel</button>
+  <button id="gotoGo">Go</button>
 </div>
 
 <script>
@@ -119,15 +143,61 @@
   // -----------------------------------------
 
   function el(id) { return document.getElementById(id); }
+  var appEl = el('app'), barEl = el('bar'), padEl = el('pad'), footerEl = el('footer');
   var statusEl = el('status'), slidePos = el('slidePos'), sentFlag = el('sentFlag');
   var zonePrev = el('zonePrev'), zoneNext = el('zoneNext');
   var gotoOverlay = el('gotoOverlay'), gotoInput = el('gotoInput'), gotoHint = el('gotoHint');
+  var gotoCancelBtn = el('gotoCancel'), gotoGoBtn = el('gotoGo');
+  var wordPrev = zonePrev.getElementsByTagName('div')[0];
+  var wordNext = zoneNext.getElementsByTagName('div')[0];
 
   var index = 0;   // 0-based
-  var total = 0;   // filled in once probing finishes
+  var total = 0;
 
-  function pad(n) { return n < 10 ? '0' + n : '' + n; }
-  function urlFor(n) { return BASE + 'slide-' + pad(n) + '.png'; }
+  // ---------- Pixel-based layout (no flex / vh, for old Kindle WebKit) ----------
+  function layout() {
+    var w = window.innerWidth || document.documentElement.clientWidth;
+    var h = window.innerHeight || document.documentElement.clientHeight;
+    var barH = 40, footerH = 34;
+    var padH = h - barH - footerH;
+    var zoneH = Math.floor(padH / 2);
+
+    appEl.style.height = h + 'px';
+    barEl.style.height = barH + 'px';
+    padEl.style.top = barH + 'px';
+    padEl.style.height = padH + 'px';
+    footerEl.style.top = (barH + padH) + 'px';
+    footerEl.style.height = footerH + 'px';
+
+    zonePrev.style.top = '0px';
+    zonePrev.style.height = zoneH + 'px';
+    zoneNext.style.top = zoneH + 'px';
+    zoneNext.style.height = (padH - zoneH) + 'px';
+
+    var wordSize = Math.min(60, Math.floor(zoneH * 0.32));
+    wordPrev.style.fontSize = wordSize + 'px';
+    wordNext.style.fontSize = wordSize + 'px';
+    wordPrev.style.lineHeight = zoneH + 'px';
+    wordNext.style.lineHeight = (padH - zoneH) + 'px';
+
+    gotoOverlay.style.height = h + 'px';
+    gotoLabelTop(h);
+  }
+
+  function gotoLabelTop(h) {
+    el('gotoLabel').style.top = Math.floor(h * 0.28) + 'px';
+    gotoInput.style.top = Math.floor(h * 0.38) + 'px';
+    gotoHint.style.top = Math.floor(h * 0.58) + 'px';
+    gotoCancelBtn.style.top = Math.floor(h * 0.7) + 'px';
+    gotoGoBtn.style.top = Math.floor(h * 0.7) + 'px';
+  }
+
+  window.onload = layout;
+  window.onresize = layout;
+  layout();
+
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function urlFor(n) { return BASE + 'slide-' + pad2(n) + '.png'; }
 
   function loadImage(url) {
     return new Promise(function (resolve, reject) {
@@ -159,18 +229,19 @@
   }
 
   function setZonesEnabled(prevOn, nextOn) {
-    zonePrev.classList.toggle('disabled', !prevOn);
-    zoneNext.classList.toggle('disabled', !nextOn);
+    zonePrev.className = 'zone' + (prevOn ? '' : ' disabled');
+    zoneNext.className = 'zone' + (nextOn ? '' : ' disabled');
   }
 
   function flashSent() {
-    sentFlag.classList.add('show');
-    setTimeout(function () { sentFlag.classList.remove('show'); }, 700);
+    sentFlag.className = 'show';
+    setTimeout(function () { sentFlag.className = ''; }, 700);
   }
 
   function flashZone(zone) {
-    zone.classList.add('pressed');
-    setTimeout(function () { zone.classList.remove('pressed'); }, 150);
+    var base = zone.className.replace(' pressed', '');
+    zone.className = base + ' pressed';
+    setTimeout(function () { zone.className = base; }, 150);
   }
 
   function send(cmd) {
@@ -181,7 +252,7 @@
       flashSent();
       statusEl.textContent = 'linked';
     }).catch(function () {
-      statusEl.textContent = 'send failed \u2014 check wifi';
+      statusEl.textContent = 'send failed - check wifi';
     });
   }
 
@@ -204,14 +275,14 @@
   }
 
   function openGoto() {
-    gotoHint.textContent = total ? ('1 \u2013 ' + total) : 'slide count unknown yet';
+    gotoHint.textContent = total ? ('1 - ' + total) : 'slide count unknown yet';
     gotoInput.value = total ? String(index + 1) : '';
-    gotoOverlay.classList.add('active');
+    gotoOverlay.className = 'active';
     setTimeout(function () { gotoInput.focus(); }, 50);
   }
 
   function closeGoto() {
-    gotoOverlay.classList.remove('active');
+    gotoOverlay.className = '';
   }
 
   function confirmGoto() {
@@ -227,16 +298,16 @@
     closeGoto();
   }
 
-  zonePrev.addEventListener('click', goPrev);
-  zoneNext.addEventListener('click', goNext);
-  slidePos.addEventListener('click', openGoto);
-  el('gotoCancel').addEventListener('click', closeGoto);
-  el('gotoGo').addEventListener('click', confirmGoto);
-  gotoInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmGoto(); });
+  zonePrev.onclick = goPrev;
+  zoneNext.onclick = goNext;
+  slidePos.onclick = openGoto;
+  gotoCancelBtn.onclick = closeGoto;
+  gotoGoBtn.onclick = confirmGoto;
+  gotoInput.onkeydown = function (e) { if (e.key === 'Enter') confirmGoto(); };
 
   updatePosLabel();
   setZonesEnabled(false, false);
-  statusEl.textContent = 'counting slides\u2026';
+  statusEl.textContent = 'counting slides...';
 
   countSlides().then(function (n) {
     total = n;
