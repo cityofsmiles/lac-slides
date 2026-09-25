@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Slide Presenter</title>
+<style>
+  :root { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #000;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #slide {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  #counter {
+    position: fixed;
+    bottom: env(safe-area-inset-bottom, 12px);
+    right: 16px;
+    color: rgba(255,255,255,0.35);
+    font-family: -apple-system, sans-serif;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+  }
+  #hint {
+    position: fixed;
+    top: env(safe-area-inset-top, 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.45);
+    font-family: -apple-system, sans-serif;
+    font-size: 13px;
+    pointer-events: none;
+    transition: opacity 0.6s ease;
+  }
+  #tapLeft, #tapRight {
+    position: fixed;
+    top: 0; bottom: 0;
+    width: 35%;
+    z-index: 5;
+  }
+  #tapLeft { left: 0; }
+  #tapRight { right: 0; }
+  #fsBtn {
+    position: fixed;
+    top: env(safe-area-inset-top, 12px);
+    right: 16px;
+    z-index: 10;
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.6);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: -apple-system, sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <img id="slide" src="" alt="slide">
+</div>
+<div id="tapLeft"></div>
+<div id="tapRight"></div>
+<div id="counter"></div>
+<div id="hint">← → or tap sides to navigate · F for fullscreen</div>
+<button id="fsBtn">Fullscreen</button>
+
+<script>
+(function() {
+  var BASE = "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/";
+  var current = 1;
+  var maxKnown = 1;
+  var img = document.getElementById('slide');
+  var counter = document.getElementById('counter');
+  var hint = document.getElementById('hint');
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function urlFor(n) { return BASE + 'slide-' + pad(n) + '.png'; }
+
+  function preload(n, onOk, onFail) {
+    var test = new Image();
+    test.onload = function() { onOk(); };
+    test.onerror = function() { onFail(); };
+    test.src = urlFor(n);
+  }
+
+  function show(n) {
+    if (n < 1) n = 1;
+    img.src = urlFor(n);
+    current = n;
+    counter.textContent = current + (maxKnown >= current ? ' / ' + maxKnown : '');
+  }
+
+  function next() {
+    var n = current + 1;
+    preload(n, function() {
+      if (n > maxKnown) maxKnown = n;
+      show(n);
+    }, function() {
+      // no further slide; stay put, flash counter
+      counter.style.opacity = '1';
+    });
+  }
+
+  function prev() {
+    if (current > 1) show(current - 1);
+  }
+
+  // Discover how many slides exist up front (quietly, in background)
+  (function discover() {
+    var n = 1;
+    function step() {
+      preload(n, function() {
+        maxKnown = n;
+        counter.textContent = current + ' / ' + maxKnown;
+        n++;
+        if (n <= 300) step(); // safety cap
+      }, function() {
+        // stop; maxKnown is the last valid slide
+      });
+    }
+    step();
+  })();
+
+  show(1);
+
+  document.getElementById('tapRight').addEventListener('click', next);
+  document.getElementById('tapLeft').addEventListener('click', prev);
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); }
+    else if (e.key === 'Home') { show(1); }
+    else if (e.key === 'End' && maxKnown > 1) { show(maxKnown); }
+  });
+
+  // swipe support
+  var touchStartX = null;
+  document.addEventListener('touchstart', function(e) {
+    touchStartX = e.touches[0].clientX;
+  });
+  document.addEventListener('touchend', function(e) {
+    if (touchStartX === null) return;
+    var dx = e.changedTouches[0].clientX - touchStartX;
+    if (dx < -40) next();
+    else if (dx > 40) prev();
+    touchStartX = null;
+  });
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(function(){});
+    } else {
+      document.exitFullscreen().catch(function(){});
+    }
+  }
+  document.getElementById('fsBtn').addEventListener('click', toggleFullscreen);
+
+  // hide hint after a few seconds
+  setTimeout(function() { hint.style.opacity = '0'; }, 4000);
+})();
+</script>
+</body>
+</html>
