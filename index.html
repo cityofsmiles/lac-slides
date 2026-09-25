@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Slide Presenter</title>
+<title>Slide Viewer</title>
 <style>
   :root { box-sizing: border-box; }
   html, body {
@@ -38,6 +38,18 @@
     letter-spacing: 0.5px;
     pointer-events: none;
   }
+  #linkDot {
+    position: fixed;
+    bottom: env(safe-area-inset-bottom, 12px);
+    left: 16px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #444;
+    pointer-events: none;
+    transition: background 0.3s ease;
+  }
+  #linkDot.live { background: #2ecc71; }
   #hint {
     position: fixed;
     top: env(safe-area-inset-top, 12px);
@@ -79,26 +91,33 @@
 </div>
 <div id="tapLeft"></div>
 <div id="tapRight"></div>
+<div id="linkDot" title="remote link status"></div>
 <div id="counter"></div>
-<div id="hint">← → or tap sides to navigate · F for fullscreen</div>
+<div id="hint">&larr; &rarr; or tap sides to navigate &middot; F for fullscreen</div>
 <button id="fsBtn">Fullscreen</button>
 
 <script>
-(function() {
+(function () {
+  // ---------------- CONFIG ----------------
   var BASE = "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/";
+  // Must match REMOTE_TOPIC in kindle-remote.html exactly.
+  var REMOTE_TOPIC = 'lac-slides-remote-k3x8p1';
+  // -----------------------------------------
+
   var current = 1;
   var maxKnown = 1;
   var img = document.getElementById('slide');
   var counter = document.getElementById('counter');
   var hint = document.getElementById('hint');
+  var linkDot = document.getElementById('linkDot');
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function urlFor(n) { return BASE + 'slide-' + pad(n) + '.png'; }
 
   function preload(n, onOk, onFail) {
     var test = new Image();
-    test.onload = function() { onOk(); };
-    test.onerror = function() { onFail(); };
+    test.onload = function () { onOk(); };
+    test.onerror = function () { onFail(); };
     test.src = urlFor(n);
   }
 
@@ -111,11 +130,10 @@
 
   function next() {
     var n = current + 1;
-    preload(n, function() {
+    preload(n, function () {
       if (n > maxKnown) maxKnown = n;
       show(n);
-    }, function() {
-      // no further slide; stay put, flash counter
+    }, function () {
       counter.style.opacity = '1';
     });
   }
@@ -124,18 +142,22 @@
     if (current > 1) show(current - 1);
   }
 
+  function goto(n) {
+    if (n < 1) n = 1;
+    if (maxKnown && n > maxKnown) n = maxKnown;
+    preload(n, function () { show(n); }, function () { /* out of range, ignore */ });
+  }
+
   // Discover how many slides exist up front (quietly, in background)
   (function discover() {
     var n = 1;
     function step() {
-      preload(n, function() {
+      preload(n, function () {
         maxKnown = n;
         counter.textContent = current + ' / ' + maxKnown;
         n++;
-        if (n <= 300) step(); // safety cap
-      }, function() {
-        // stop; maxKnown is the last valid slide
-      });
+        if (n <= 300) step();
+      }, function () { /* stop; maxKnown is the last valid slide */ });
     }
     step();
   })();
@@ -145,7 +167,7 @@
   document.getElementById('tapRight').addEventListener('click', next);
   document.getElementById('tapLeft').addEventListener('click', prev);
 
-  document.addEventListener('keydown', function(e) {
+  document.addEventListener('keydown', function (e) {
     if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
     else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
     else if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); }
@@ -153,12 +175,9 @@
     else if (e.key === 'End' && maxKnown > 1) { show(maxKnown); }
   });
 
-  // swipe support
   var touchStartX = null;
-  document.addEventListener('touchstart', function(e) {
-    touchStartX = e.touches[0].clientX;
-  });
-  document.addEventListener('touchend', function(e) {
+  document.addEventListener('touchstart', function (e) { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', function (e) {
     if (touchStartX === null) return;
     var dx = e.changedTouches[0].clientX - touchStartX;
     if (dx < -40) next();
@@ -168,15 +187,35 @@
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(function(){});
+      document.documentElement.requestFullscreen().catch(function () {});
     } else {
-      document.exitFullscreen().catch(function(){});
+      document.exitFullscreen().catch(function () {});
     }
   }
   document.getElementById('fsBtn').addEventListener('click', toggleFullscreen);
 
-  // hide hint after a few seconds
-  setTimeout(function() { hint.style.opacity = '0'; }, 4000);
+  setTimeout(function () { hint.style.opacity = '0'; }, 4000);
+
+  // ---------- Remote control link (receives commands over ntfy.sh) ----------
+  function connectRemote() {
+    if (typeof EventSource === 'undefined') return;
+    var url = 'https://ntfy.sh/' + REMOTE_TOPIC + '/sse';
+    var es = new EventSource(url);
+    es.onopen = function () { linkDot.classList.add('live'); };
+    es.onerror = function () { linkDot.classList.remove('live'); };
+    es.onmessage = function (evt) {
+      var payload;
+      try { payload = JSON.parse(evt.data); } catch (e) { return; }
+      if (!payload || !payload.message) return;
+      var cmd;
+      try { cmd = JSON.parse(payload.message); } catch (e) { return; }
+      if (!cmd || !cmd.action) return;
+      if (cmd.action === 'next') next();
+      else if (cmd.action === 'prev') prev();
+      else if (cmd.action === 'goto' && typeof cmd.index === 'number') goto(cmd.index + 1);
+    };
+  }
+  connectRemote();
 })();
 </script>
 </body>
