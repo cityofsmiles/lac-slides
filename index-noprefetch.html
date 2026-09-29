@@ -99,65 +99,68 @@
 <script>
 (function () {
   // ---------------- CONFIG ----------------
-  // Total number of slides. Update this if you add/remove slides.
-  var TOTAL = 400;
-  // How many slides ahead to prefetch.
-  var AHEAD = 5;
-  // CDN first (fast, long cache); raw GitHub as automatic fallback.
-  var BASES = [
-    "https://cdn.jsdelivr.net/gh/cityofsmiles/lac-slides@main/slides/",
-    "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/"
-  ];
-  var baseIdx = 0;
+  var BASE = "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/";
   // Must match REMOTE_TOPIC in kindle-remote.html exactly.
   var REMOTE_TOPIC = 'lac-slides-remote-k3x8p1';
   // -----------------------------------------
 
   var current = 1;
+  var maxKnown = 1;
   var img = document.getElementById('slide');
   var counter = document.getElementById('counter');
   var hint = document.getElementById('hint');
   var linkDot = document.getElementById('linkDot');
-  var cache = {}; // keep references so prefetched images stay in memory
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
-  function urlFor(n) { return BASES[baseIdx] + 'slide-' + pad(n) + '.png'; }
+  function urlFor(n) { return BASE + 'slide-' + pad(n) + '.png'; }
 
-  function prefetch(n) {
-    var i, im;
-    for (i = n - 1; i <= Math.min(n + AHEAD, TOTAL); i++) {
-      if (i < 1 || cache[i]) continue;
-      im = new Image();
-      im.src = urlFor(i);
-      cache[i] = im;
-    }
-    // Free memory for slides far behind/ahead of the current one
-    Object.keys(cache).forEach(function (k) {
-      if (Math.abs(k - n) > 12) delete cache[k];
-    });
+  function preload(n, onOk, onFail) {
+    var test = new Image();
+    test.onload = function () { onOk(); };
+    test.onerror = function () { onFail(); };
+    test.src = urlFor(n);
   }
 
   function show(n) {
     if (n < 1) n = 1;
-    if (n > TOTAL) n = TOTAL;
+    img.src = urlFor(n);
     current = n;
-    img.src = cache[n] ? cache[n].src : urlFor(n);
-    counter.textContent = current + ' / ' + TOTAL;
-    prefetch(n);
+    counter.textContent = current + (maxKnown >= current ? ' / ' + maxKnown : '');
   }
 
-  // If the CDN fails, fall back to the next base URL and retry.
-  img.addEventListener('error', function () {
-    if (baseIdx < BASES.length - 1) {
-      baseIdx++;
-      cache = {};
-      show(current);
-    }
-  });
+  function next() {
+    var n = current + 1;
+    preload(n, function () {
+      if (n > maxKnown) maxKnown = n;
+      show(n);
+    }, function () {
+      counter.style.opacity = '1';
+    });
+  }
 
-  function next() { show(current + 1); }
-  function prev() { show(current - 1); }
-  function goto(n) { show(n); }
+  function prev() {
+    if (current > 1) show(current - 1);
+  }
+
+  function goto(n) {
+    if (n < 1) n = 1;
+    if (maxKnown && n > maxKnown) n = maxKnown;
+    preload(n, function () { show(n); }, function () { /* out of range, ignore */ });
+  }
+
+  // Discover how many slides exist up front (quietly, in background)
+  (function discover() {
+    var n = 1;
+    function step() {
+      preload(n, function () {
+        maxKnown = n;
+        counter.textContent = current + ' / ' + maxKnown;
+        n++;
+        if (n <= 300) step();
+      }, function () { /* stop; maxKnown is the last valid slide */ });
+    }
+    step();
+  })();
 
   show(1);
 
@@ -169,7 +172,7 @@
     else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
     else if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); }
     else if (e.key === 'Home') { show(1); }
-    else if (e.key === 'End') { show(TOTAL); }
+    else if (e.key === 'End' && maxKnown > 1) { show(maxKnown); }
   });
 
   var touchStartX = null;
