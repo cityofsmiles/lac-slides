@@ -139,7 +139,7 @@
   var BASE = "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/";
   // Must match REMOTE_TOPIC in slide-viewer.html exactly.
   var REMOTE_TOPIC = 'lac-slides-remote-k3x8p1';
-  var MAX_SLIDES_TO_PROBE = 300;
+  var MAX_SLIDES_TO_PROBE = 1000;
   // -----------------------------------------
 
   function el(id) { return document.getElementById(id); }
@@ -208,18 +208,30 @@
     });
   }
 
+  // Binary-search count (assumes slides are numbered 1..N with no gaps).
+  // ~10 image loads instead of one per slide.
+  function exists(i) {
+    return loadImage(urlFor(i)).then(function () { return true; },
+                                     function () { return false; });
+  }
+
   function countSlides() {
-    var n = 0;
-    function step(i) {
-      if (i > MAX_SLIDES_TO_PROBE) { return Promise.resolve(n); }
-      return loadImage(urlFor(i)).then(function () {
-        n = i;
-        return step(i + 1);
-      }).catch(function () {
-        return n;
+    // Phase 1: double until a slide is missing (lo exists or is 0, hi is missing)
+    function grow(lo, hi) {
+      if (hi > MAX_SLIDES_TO_PROBE) { return Promise.resolve([lo, MAX_SLIDES_TO_PROBE + 1]); }
+      return exists(hi).then(function (ok) {
+        return ok ? grow(hi, hi * 2) : [lo, hi];
       });
     }
-    return step(1);
+    // Phase 2: binary search between lo (exists) and hi (missing)
+    function search(lo, hi) {
+      if (hi - lo <= 1) { return Promise.resolve(lo); }
+      var mid = Math.floor((lo + hi) / 2);
+      return exists(mid).then(function (ok) {
+        return ok ? search(mid, hi) : search(lo, mid);
+      });
+    }
+    return grow(0, 1).then(function (r) { return search(r[0], r[1]); });
   }
 
   function updatePosLabel() {
