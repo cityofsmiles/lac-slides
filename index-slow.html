@@ -99,54 +99,41 @@
 <script>
 (function () {
   // ---------------- CONFIG ----------------
-  var TOTAL = 400;      // total slides
-  var AHEAD = 10;       // slides to prefetch ahead
-  var BEHIND = 2;       // slides to keep ready behind
-  var EXT = 'webp';      // change to 'webp' after converting your slides
-  // Pin to a tag or commit (e.g. "v1") for long-lived CDN caching; "main" is slower.
-  var REF = 'v1';
+  // Total number of slides. Update this if you add/remove slides.
+  var TOTAL = 400;
+  // How many slides ahead to prefetch.
+  var AHEAD = 5;
+  // CDN first (fast, long cache); raw GitHub as automatic fallback.
   var BASES = [
-    "https://cdn.jsdelivr.net/gh/cityofsmiles/lac-slides@" + REF + "/slides/",
+    "https://cdn.jsdelivr.net/gh/cityofsmiles/lac-slides@main/slides/",
     "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/"
   ];
+  var baseIdx = 0;
   // Must match REMOTE_TOPIC in kindle-remote.html exactly.
   var REMOTE_TOPIC = 'lac-slides-remote-k3x8p1';
   // -----------------------------------------
 
-  var current = 1, shown = 0;
+  var current = 1;
   var img = document.getElementById('slide');
   var counter = document.getElementById('counter');
   var hint = document.getElementById('hint');
   var linkDot = document.getElementById('linkDot');
-  var cache = {};
+  var cache = {}; // keep references so prefetched images stay in memory
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
-  function urlFor(n, b) { return BASES[b || 0] + 'slide-' + pad(n) + '.' + EXT; }
-
-  // One entry per slide; falls back to the next host for that slide only.
-  function load(i) {
-    if (i < 1 || i > TOTAL) return null;
-    var e = cache[i];
-    if (e && !e.failed) return e;
-    e = cache[i] = { img: new Image(), base: 0, failed: false };
-    e.ready = new Promise(function (resolve, reject) {
-      e.img.onload = resolve;
-      e.img.onerror = function () {
-        if (e.base < BASES.length - 1) { e.base++; e.img.src = urlFor(i, e.base); }
-        else { e.failed = true; reject(); }
-      };
-    });
-    e.ready.catch(function () {});
-    e.img.src = urlFor(i, 0);
-    return e;
-  }
+  function urlFor(n) { return BASES[baseIdx] + 'slide-' + pad(n) + '.png'; }
 
   function prefetch(n) {
-    var i;
-    for (i = n + 1; i <= Math.min(n + AHEAD, TOTAL); i++) load(i);
-    for (i = n - 1; i >= Math.max(n - BEHIND, 1); i--) load(i);
+    var i, im;
+    for (i = n - 1; i <= Math.min(n + AHEAD, TOTAL); i++) {
+      if (i < 1 || cache[i]) continue;
+      im = new Image();
+      im.src = urlFor(i);
+      cache[i] = im;
+    }
+    // Free memory for slides far behind/ahead of the current one
     Object.keys(cache).forEach(function (k) {
-      if (k < n - BEHIND - 4 || k > n + AHEAD + 4) delete cache[k];
+      if (Math.abs(k - n) > 12) delete cache[k];
     });
   }
 
@@ -154,17 +141,19 @@
     if (n < 1) n = 1;
     if (n > TOTAL) n = TOTAL;
     current = n;
-    counter.textContent = n + ' / ' + TOTAL;
-    var token = ++shown, e = load(n);
-    function done() {
-      if (token !== shown) return;           // user already moved on
-      img.src = e.img.src;
-      prefetch(n);                           // fetch neighbours only after this one is up
-    }
-    e.ready.then(function () {
-      return e.img.decode ? e.img.decode() : null;   // decode first: no blank flash
-    }).then(done, done);
+    img.src = cache[n] ? cache[n].src : urlFor(n);
+    counter.textContent = current + ' / ' + TOTAL;
+    prefetch(n);
   }
+
+  // If the CDN fails, fall back to the next base URL and retry.
+  img.addEventListener('error', function () {
+    if (baseIdx < BASES.length - 1) {
+      baseIdx++;
+      cache = {};
+      show(current);
+    }
+  });
 
   function next() { show(current + 1); }
   function prev() { show(current - 1); }
@@ -203,19 +192,6 @@
   document.getElementById('fsBtn').addEventListener('click', toggleFullscreen);
 
   setTimeout(function () { hint.style.opacity = '0'; }, 4000);
-
-  // ---------- Service worker: persistent cache + background precache ----------
-  if ('serviceWorker' in navigator && 'Promise' in window) {
-    navigator.serviceWorker.register('sw.js')
-      .then(function () { return navigator.serviceWorker.ready; })
-      .then(function (reg) {
-        setTimeout(function () {
-          var urls = [], i;
-          for (i = 1; i <= TOTAL; i++) urls.push(urlFor(i, 0));
-          if (reg.active) reg.active.postMessage({ type: 'precache', urls: urls });
-        }, 3000);
-      }).catch(function () {});
-  }
 
   // ---------- Remote control link (receives commands over ntfy.sh) ----------
   function connectRemote() {
