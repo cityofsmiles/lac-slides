@@ -96,7 +96,6 @@
 <div id="hint">&larr; &rarr; or tap sides to navigate &middot; F for fullscreen</div>
 <button id="fsBtn">Fullscreen</button>
 
-<script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
 <script>
 (function () {
   // ---------------- CONFIG ----------------
@@ -105,14 +104,13 @@
   var BEHIND = 2;       // slides to keep ready behind
   var EXT = 'webp';      // change to 'webp' after converting your slides
   // Pin to a tag or commit (e.g. "v1") for long-lived CDN caching; "main" is slower.
-  var REF = 'v4';
+  var REF = 'v3';
   var BASES = [
     "https://cdn.jsdelivr.net/gh/cityofsmiles/lac-slides@" + REF + "/slides/",
     "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/"
   ];
-  // Scaledrone remote link. Both values must match kindle.html exactly.
-  var SD_CHANNEL_ID = 'YOUR_SCALEDRONE_CHANNEL_ID';
-  var SD_ROOM = 'observable-lac-slides-k3x8p1';
+  // Must match REMOTE_TOPIC in kindle-remote.html exactly.
+  var REMOTE_TOPIC = 'lac-slides-remote-k3x8p1';
   // -----------------------------------------
 
   var current = 1, shown = 0;
@@ -219,28 +217,24 @@
       }).catch(function () {});
   }
 
-  // ---------- Remote control link (receives commands over Scaledrone) ----------
-  function handleCommand(cmd) {
-    if (typeof cmd === 'string') { try { cmd = JSON.parse(cmd); } catch (e) { return; } }
-    if (!cmd || !cmd.action) return;
-    if (cmd.action === 'next') next();
-    else if (cmd.action === 'prev') prev();
-    else if (cmd.action === 'goto' && typeof cmd.index === 'number') goto(cmd.index + 1);
-  }
-
+  // ---------- Remote control link (receives commands over ntfy.sh) ----------
   function connectRemote() {
-    if (typeof Scaledrone === 'undefined' || SD_CHANNEL_ID === 'YOUR_SCALEDRONE_CHANNEL_ID') return;
-    var drone = new Scaledrone(SD_CHANNEL_ID);
-    drone.on('open', function (err) {
-      if (err) { linkDot.classList.remove('live'); return; }
-      var room = drone.subscribe(SD_ROOM);
-      room.on('message', function (msg) { handleCommand(msg.data); });
-      linkDot.classList.add('live');
-    });
-    drone.on('reconnect', function () { linkDot.classList.add('live'); });
-    drone.on('close', function () { linkDot.classList.remove('live'); });
-    drone.on('disconnect', function () { linkDot.classList.remove('live'); });
-    drone.on('error', function () { linkDot.classList.remove('live'); });
+    if (typeof EventSource === 'undefined') return;
+    var url = 'https://ntfy.sh/' + REMOTE_TOPIC + '/sse';
+    var es = new EventSource(url);
+    es.onopen = function () { linkDot.classList.add('live'); };
+    es.onerror = function () { linkDot.classList.remove('live'); };
+    es.onmessage = function (evt) {
+      var payload;
+      try { payload = JSON.parse(evt.data); } catch (e) { return; }
+      if (!payload || !payload.message) return;
+      var cmd;
+      try { cmd = JSON.parse(payload.message); } catch (e) { return; }
+      if (!cmd || !cmd.action) return;
+      if (cmd.action === 'next') next();
+      else if (cmd.action === 'prev') prev();
+      else if (cmd.action === 'goto' && typeof cmd.index === 'number') goto(cmd.index + 1);
+    };
   }
   connectRemote();
 })();

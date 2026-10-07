@@ -131,16 +131,14 @@
   <button id="gotoGo">Go</button>
 </div>
 
-<script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
 <script>
 (function () {
   'use strict';
 
   // ---------------- CONFIG ----------------
   var BASE = "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/";
-  // Scaledrone remote link. Both values must match index.html exactly.
-  var SD_CHANNEL_ID = 'YOUR_SCALEDRONE_CHANNEL_ID';
-  var SD_ROOM = 'observable-lac-slides-k3x8p1';
+  // Must match REMOTE_TOPIC in slide-viewer.html exactly.
+  var REMOTE_TOPIC = 'lac-slides-remote-k3x8p1';
   var MAX_SLIDES_TO_PROBE = 1000;
   // -----------------------------------------
 
@@ -258,45 +256,16 @@
     setTimeout(function () { zone.className = base; }, 150);
   }
 
-  var drone = null, linked = false;
-
-  function connectRemote() {
-    if (typeof Scaledrone === 'undefined') {
-      statusEl.textContent = 'cannot load Scaledrone - check wifi';
-      return;
-    }
-    if (typeof WebSocket === 'undefined') {
-      statusEl.textContent = 'browser has no WebSocket support';
-      return;
-    }
-    if (SD_CHANNEL_ID === 'YOUR_SCALEDRONE_CHANNEL_ID') {
-      statusEl.textContent = 'set SD_CHANNEL_ID first';
-      return;
-    }
-    statusEl.textContent = 'connecting...';
-    drone = new Scaledrone(SD_CHANNEL_ID);
-    drone.on('open', function (err) {
-      if (err) { linked = false; statusEl.textContent = 'connect failed'; return; }
-      linked = true;
-      statusEl.textContent = 'linked';
-    });
-    drone.on('reconnect', function () { linked = true; statusEl.textContent = 'linked'; });
-    drone.on('close', function () { linked = false; statusEl.textContent = 'disconnected - retrying'; });
-    drone.on('disconnect', function () { linked = false; statusEl.textContent = 'disconnected - retrying'; });
-    drone.on('error', function () { linked = false; statusEl.textContent = 'link error'; });
-  }
-
   function send(cmd) {
-    if (!drone || !linked) {
-      statusEl.textContent = 'not linked - check wifi';
-      return;
-    }
-    try {
-      drone.publish({ room: SD_ROOM, message: cmd });
+    fetch('https://ntfy.sh/' + REMOTE_TOPIC, {
+      method: 'POST',
+      body: JSON.stringify(cmd)
+    }).then(function () {
       flashSent();
-    } catch (e) {
+      statusEl.textContent = 'linked';
+    }).catch(function () {
       statusEl.textContent = 'send failed - check wifi';
-    }
+    });
   }
 
   function goNext() {
@@ -304,7 +273,7 @@
     index += 1;
     updatePosLabel();
     setZonesEnabled(index > 0, !total || index < total - 1);
-    send({ action: 'goto', index: index });
+    send({ action: 'next' });
     flashZone(zoneNext);
   }
 
@@ -313,7 +282,7 @@
     index -= 1;
     updatePosLabel();
     setZonesEnabled(index > 0, !total || index < total - 1);
-    send({ action: 'goto', index: index });
+    send({ action: 'prev' });
     flashZone(zonePrev);
   }
 
@@ -350,15 +319,13 @@
 
   updatePosLabel();
   setZonesEnabled(false, false);
-  connectRemote();
   statusEl.textContent = 'counting slides...';
 
   countSlides().then(function (n) {
     total = n;
     updatePosLabel();
     setZonesEnabled(index > 0, total > 0 && index < total - 1);
-    if (!total) statusEl.textContent = 'no slides found';
-    else if (!linked) statusEl.textContent = 'ready';
+    statusEl.textContent = total ? 'ready' : 'no slides found';
   });
 })();
 </script>
