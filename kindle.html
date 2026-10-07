@@ -276,14 +276,14 @@
     statusEl.textContent = 'connecting...';
     drone = new Scaledrone(SD_CHANNEL_ID);
     drone.on('open', function (err) {
-      if (err) { linked = false; statusEl.textContent = 'connect failed'; return; }
+      if (err) { linked = false; statusEl.textContent = 'connect failed: ' + (err.message || err); return; }
       linked = true;
       statusEl.textContent = 'linked';
     });
     drone.on('reconnect', function () { linked = true; statusEl.textContent = 'linked'; });
-    drone.on('close', function () { linked = false; statusEl.textContent = 'disconnected - retrying'; });
+    drone.on('close', function (e) { linked = false; statusEl.textContent = 'closed' + (e && e.reason ? ': ' + e.reason : ' - retrying'); });
     drone.on('disconnect', function () { linked = false; statusEl.textContent = 'disconnected - retrying'; });
-    drone.on('error', function () { linked = false; statusEl.textContent = 'link error'; });
+    drone.on('error', function (e) { linked = false; statusEl.textContent = 'link error: ' + ((e && e.message) || e); });
   }
 
   function send(cmd) {
