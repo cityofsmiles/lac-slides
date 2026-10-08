@@ -131,17 +131,16 @@
   <button id="gotoGo">Go</button>
 </div>
 
-<script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+<script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
 <script>
 (function () {
   'use strict';
 
   // ---------------- CONFIG ----------------
   var BASE = "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/";
-  // Ably remote link. Both values must match index.html exactly.
-  // Use an Ably key limited to Subscribe + Publish on this one channel.
-  var ABLY_KEY = 'YOUR_ABLY_API_KEY';
-  var ABLY_CHANNEL = 'lac-slides-k3x8p1';
+  // Scaledrone remote link. Both values must match index.html exactly.
+  var SD_CHANNEL_ID = 'TjNdDMmREAS9G1VS';
+  var SD_ROOM = 'observable-lac-slides-k3x8p1';
   var MAX_SLIDES_TO_PROBE = 1000;
   // -----------------------------------------
 
@@ -259,41 +258,41 @@
     setTimeout(function () { zone.className = base; }, 150);
   }
 
-  var realtime = null, channel = null, linked = false;
+  var drone = null, linked = false;
 
   function connectRemote() {
-    if (typeof Ably === 'undefined') {
-      statusEl.textContent = 'cannot load Ably - check wifi';
+    if (typeof Scaledrone === 'undefined') {
+      statusEl.textContent = 'cannot load Scaledrone - check wifi';
       return;
     }
-    if (ABLY_KEY === 'YOUR_ABLY_API_KEY') {
-      statusEl.textContent = 'set ABLY_KEY first';
+    if (typeof WebSocket === 'undefined') {
+      statusEl.textContent = 'browser has no WebSocket support';
+      return;
+    }
+    if (SD_CHANNEL_ID === 'YOUR_SCALEDRONE_CHANNEL_ID') {
+      statusEl.textContent = 'set SD_CHANNEL_ID first';
       return;
     }
     statusEl.textContent = 'connecting...';
-    realtime = new Ably.Realtime({ key: ABLY_KEY, echoMessages: false });
-    realtime.connection.on(function (change) {
-      var st = change.current;
-      linked = (st === 'connected');
-      if (st === 'connected') statusEl.textContent = 'linked';
-      else if (st === 'connecting') statusEl.textContent = 'connecting...';
-      else if (st === 'disconnected') statusEl.textContent = 'disconnected - retrying';
-      else if (st === 'suspended') statusEl.textContent = 'offline - retrying';
-      else if (st === 'failed') statusEl.textContent = 'failed: ' + ((change.reason && change.reason.message) || 'unknown');
-      else if (st === 'closed') statusEl.textContent = 'closed';
+    drone = new Scaledrone(SD_CHANNEL_ID);
+    drone.on('open', function (err) {
+      if (err) { linked = false; statusEl.textContent = 'connect failed: ' + (err.message || err); return; }
+      linked = true;
+      statusEl.textContent = 'linked';
     });
-    channel = realtime.channels.get(ABLY_CHANNEL);
+    drone.on('reconnect', function () { linked = true; statusEl.textContent = 'linked'; });
+    drone.on('close', function (e) { linked = false; statusEl.textContent = 'closed' + (e && e.reason ? ': ' + e.reason : ' - retrying'); });
+    drone.on('disconnect', function () { linked = false; statusEl.textContent = 'disconnected - retrying'; });
+    drone.on('error', function (e) { linked = false; statusEl.textContent = 'link error: ' + ((e && e.message) || e); });
   }
 
   function send(cmd) {
-    if (!channel || !linked) {
+    if (!drone || !linked) {
       statusEl.textContent = 'not linked - check wifi';
       return;
     }
     try {
-      channel.publish('cmd', cmd, function (err) {
-        if (err) statusEl.textContent = 'send failed: ' + (err.message || err);
-      });
+      drone.publish({ room: SD_ROOM, message: cmd });
       flashSent();
     } catch (e) {
       statusEl.textContent = 'send failed - check wifi';

@@ -96,7 +96,7 @@
 <div id="hint">&larr; &rarr; or tap sides to navigate &middot; F for fullscreen</div>
 <button id="fsBtn">Fullscreen</button>
 
-<script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+<script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
 <script>
 (function () {
   // ---------------- CONFIG ----------------
@@ -110,10 +110,9 @@
     "https://cdn.jsdelivr.net/gh/cityofsmiles/lac-slides@" + REF + "/slides/",
     "https://raw.githubusercontent.com/cityofsmiles/lac-slides/refs/heads/main/slides/"
   ];
-  // Ably remote link. Both values must match kindle.html exactly.
-  // Use an Ably key limited to Subscribe + Publish on this one channel.
-  var ABLY_KEY = 'YOUR_ABLY_API_KEY';
-  var ABLY_CHANNEL = 'lac-slides-k3x8p1';
+  // Scaledrone remote link. Both values must match kindle.html exactly.
+  var SD_CHANNEL_ID = 'TjNdDMmREAS9G1VS';
+  var SD_ROOM = 'observable-lac-slides-k3x8p1';
   // -----------------------------------------
 
   var current = 1, shown = 0;
@@ -220,7 +219,7 @@
       }).catch(function () {});
   }
 
-  // ---------- Remote control link (receives commands over Ably) ----------
+  // ---------- Remote control link (receives commands over Scaledrone) ----------
   function handleCommand(cmd) {
     if (typeof cmd === 'string') { try { cmd = JSON.parse(cmd); } catch (e) { return; } }
     if (!cmd || !cmd.action) return;
@@ -230,14 +229,18 @@
   }
 
   function connectRemote() {
-    if (typeof Ably === 'undefined' || ABLY_KEY === 'YOUR_ABLY_API_KEY') return;
-    var realtime = new Ably.Realtime({ key: ABLY_KEY });
-    realtime.connection.on(function (change) {
-      if (change.current === 'connected') linkDot.classList.add('live');
-      else linkDot.classList.remove('live');
+    if (typeof Scaledrone === 'undefined' || SD_CHANNEL_ID === 'YOUR_SCALEDRONE_CHANNEL_ID') return;
+    var drone = new Scaledrone(SD_CHANNEL_ID);
+    drone.on('open', function (err) {
+      if (err) { linkDot.classList.remove('live'); return; }
+      var room = drone.subscribe(SD_ROOM);
+      room.on('message', function (msg) { handleCommand(msg.data); });
+      linkDot.classList.add('live');
     });
-    var channel = realtime.channels.get(ABLY_CHANNEL);
-    channel.subscribe('cmd', function (msg) { handleCommand(msg.data); });
+    drone.on('reconnect', function () { linkDot.classList.add('live'); });
+    drone.on('close', function () { linkDot.classList.remove('live'); });
+    drone.on('disconnect', function () { linkDot.classList.remove('live'); });
+    drone.on('error', function () { linkDot.classList.remove('live'); });
   }
   connectRemote();
 })();
