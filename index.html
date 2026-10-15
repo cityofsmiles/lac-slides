@@ -207,6 +207,25 @@
 
   setTimeout(function () { hint.style.opacity = '0'; }, 4000);
 
+  // ---------- Keep the screen awake (Screen Wake Lock API) ----------
+  var wakeLock = null;
+  function requestWakeLock() {
+    if (!('wakeLock' in navigator) || wakeLock || document.visibilityState !== 'visible') return;
+    navigator.wakeLock.request('screen').then(function (lock) {
+      wakeLock = lock;
+      lock.addEventListener('release', function () { wakeLock = null; });
+    }).catch(function () {});
+  }
+  requestWakeLock();
+  // Some browsers only grant it after a user gesture, so retry on first interaction
+  ['click', 'touchstart', 'keydown'].forEach(function (evt) {
+    document.addEventListener(evt, requestWakeLock, { passive: true });
+  });
+  // The lock is released when the tab is hidden; re-acquire on return
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') requestWakeLock();
+  });
+
   // ---------- Service worker: persistent cache + background precache ----------
   if ('serviceWorker' in navigator && 'Promise' in window) {
     navigator.serviceWorker.register('sw.js')
